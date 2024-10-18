@@ -1,20 +1,14 @@
-import { Sprite, loadImage } from "./Sprite";
+import { Sprite } from "../components/Sprite";
+import { loadImage } from './imageUtils';
 
-const PLAYER_SPRITE_PATH = "/player_.png";
+import { PLAYER_SPRITE_PATH } from "../constants/gameConstants";
+
 let playerSprite = null;
 
 export const loadPlayerSprite = async () => {
   try {
-    console.log("Attempting to load image from:", PLAYER_SPRITE_PATH);
     const image = await loadImage(PLAYER_SPRITE_PATH);
-    console.log(
-      "Image loaded successfully. Dimensions:",
-      image.width,
-      "x",
-      image.height
-    );
     playerSprite = new Sprite(image, 2.25);
-    console.log("Player sprite created successfully");
     return playerSprite;
   } catch (error) {
     console.error("Failed to load player sprite:", error);
@@ -67,17 +61,11 @@ export const updatePlayer = (
 
   // Vertical movement
   if (onLadder && (keys.ArrowUp || keys.ArrowDown)) {
-    // Climbing ladder
     newPlayer.isOnLadder = true;
     newPlayer.yVelocity = 0;
-    if (keys.ArrowUp) {
-      newPlayer.y -= player.climbSpeed;
-    } else if (keys.ArrowDown) {
-      newPlayer.y += player.climbSpeed;
-    }
+    newPlayer.y += keys.ArrowUp ? -player.climbSpeed : player.climbSpeed;
     isMoving = true;
   } else {
-    // Not climbing, apply gravity and handle jumping
     newPlayer.isOnLadder = false;
     newPlayer.yVelocity += 0.8;
 
@@ -97,24 +85,8 @@ export const updatePlayer = (
     newPlayer.y += newPlayer.yVelocity;
   }
 
-  // Floor collision
-  const floorCollision = checkFloorCollision(newPlayer, floors);
-  if (floorCollision && !newPlayer.isOnLadder) {
-    newPlayer.y = floorCollision.y - newPlayer.height;
-    newPlayer.yVelocity = 0;
-    newPlayer.isJumping = false;
-  }
-
-  // Ceiling collision
-  const ceilingCollision = checkCeilingCollision(newPlayer, floors);
-  if (ceilingCollision && !newPlayer.isOnLadder) {
-    newPlayer.y = ceilingCollision.y + ceilingCollision.height;
-    newPlayer.yVelocity = 0;
-  }
-
-  // Constrain player to level bounds
-  newPlayer.x = Math.max(0, Math.min(newPlayer.x, levelWidth - newPlayer.width));
-  newPlayer.y = Math.max(0, Math.min(newPlayer.y, levelHeight - newPlayer.height));
+  // Apply collisions and constraints
+  applyCollisionsAndConstraints(newPlayer, floors, levelWidth, levelHeight);
 
   // Update sprite animation
   if (newPlayer.sprite) {
@@ -149,32 +121,50 @@ const checkLadderCollision = (player, ladders) => {
   );
 };
 
+const applyCollisionsAndConstraints = (
+  player,
+  floors,
+  levelWidth,
+  levelHeight
+) => {
+  // Floor collision
+  const floorCollision = checkFloorCollision(player, floors);
+  if (floorCollision && !player.isOnLadder) {
+    player.y = floorCollision.y - player.height;
+    player.yVelocity = 0;
+    player.isJumping = false;
+  }
+
+  // Ceiling collision
+  const ceilingCollision = checkCeilingCollision(player, floors);
+  if (ceilingCollision && !player.isOnLadder) {
+    player.y = ceilingCollision.y + ceilingCollision.height;
+    player.yVelocity = 0;
+  }
+
+  // Constrain player to level bounds
+  player.x = Math.max(0, Math.min(player.x, levelWidth - player.width));
+  player.y = Math.max(0, Math.min(player.y, levelHeight - player.height));
+};
+
 const checkFloorCollision = (player, floors) => {
-  for (let floor of floors) {
-    if (
+  return floors.find(
+    (floor) =>
       player.x < floor.x + floor.width &&
       player.x + player.width > floor.x &&
       player.y + player.height > floor.y &&
       player.y + player.height < floor.y + floor.height + player.yVelocity
-    ) {
-      return floor;
-    }
-  }
-  return null;
+  );
 };
 
 const checkCeilingCollision = (player, floors) => {
-  for (let floor of floors) {
-    if (
+  return floors.find(
+    (floor) =>
       player.x < floor.x + floor.width &&
       player.x + player.width > floor.x &&
       player.y < floor.y + floor.height &&
       player.y > floor.y
-    ) {
-      return floor;
-    }
-  }
-  return null;
+  );
 };
 
 const isOnGround = (player, floors) => {

@@ -1,93 +1,36 @@
 import React, { useRef, useEffect, useState, useCallback } from "react";
-import { useGameLoop } from "./useGameLoop";
-import { useKeyPress } from "./useKeyPress";
-import { createLevel, drawLevel } from "./levelUtils";
-import {
-  createPlayer,
-  updatePlayer,
-  drawPlayer,
-  loadPlayerSprite,
-} from "./playerUtils";
-import {
-  setupCanvas,
-  clearCanvas,
-  getCameraOffset,
-  CANVAS_WIDTH,
-  CANVAS_HEIGHT,
-} from "./canvasUtils";
-import { createEnemy, updateEnemy, drawEnemy } from "./enemyUtils";
-import { updateObstacles, drawObstacles } from "./obstacleUtils";
-import {
-  createAdvancedEnemy,
-  updateAdvancedEnemy,
-  drawAdvancedEnemy,
-} from "./advancedEnemyUtils";
-import {
-  updateAdvancedObstacles,
-  drawAdvancedObstacles,
-} from "./advancedObstacleUtils";
-
-const LEVEL_WIDTH = 800;
-const LEVEL_HEIGHT = 1200;
-const FIXED_TIME_STEP = 1000 / 30; // 60 FPS
+import { useGameLoop } from "../hooks/useGameLoop";
+import { useKeyPress } from "../hooks/useKeyPress";
+import { createLevel, drawLevel } from "../utils/levelUtils";
+import { createPlayer, updatePlayer, drawPlayer, loadPlayerSprite } from "../utils/playerUtils";
+import { setupCanvas, clearCanvas, getCameraOffset } from "../utils/canvasUtils";
+import { createEnemy, updateEnemy, drawEnemy } from "../utils/enemyUtils";
+import { updateObstacles, drawObstacles } from "../utils/obstacleUtils";
+import { CANVAS_WIDTH, CANVAS_HEIGHT, LEVEL_WIDTH, LEVEL_HEIGHT, FIXED_TIME_STEP } from "../constants/gameConstants";
 
 const Game = () => {
   const canvasRef = useRef(null);
   const [player, setPlayer] = useState(null);
   const [level, setLevel] = useState(null);
   const [enemy, setEnemy] = useState(null);
-  const [advancedEnemy, setAdvancedEnemy] = useState(null);
   const [obstacles, setObstacles] = useState([]);
-  const [advancedObstacles, setAdvancedObstacles] = useState([]);
   const [gameTime, setGameTime] = useState(0);
-  const [spritesLoaded, setSpritesLoaded] = useState(false);
-  const [error, setError] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
   const [currentLevel, setCurrentLevel] = useState(1);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   const keys = useKeyPress();
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (canvas) {
-      setupCanvas(canvas, CANVAS_WIDTH, CANVAS_HEIGHT);
-      const ctx = canvas.getContext("2d");
-      ctx.fillStyle = "black";
-      ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-      ctx.fillStyle = "white";
-      ctx.font = "30px Arial";
-      ctx.textAlign = "center";
-      ctx.fillText("Loading game...", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
-    }
-
-    const preventDefault = (e) => {
-      if (
-        ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].indexOf(
-          e.code
-        ) > -1
-      ) {
-        e.preventDefault();
-      }
-    };
-    window.addEventListener("keydown", preventDefault);
-    return () => window.removeEventListener("keydown", preventDefault);
-  }, []);
-
-  useEffect(() => {
     const loadGame = async () => {
       try {
-        if (!spritesLoaded) {
-          await loadPlayerSprite();
-          setSpritesLoaded(true);
-        }
+        await loadPlayerSprite();
         const newLevel = createLevel(currentLevel, LEVEL_WIDTH, LEVEL_HEIGHT);
         setLevel(newLevel);
         const bottomPlatform = newLevel.platforms[0];
         setPlayer(createPlayer(50, bottomPlatform.y - 32 * 2));
         setEnemy(createEnemy(newLevel.enemy));
-        setAdvancedEnemy(createAdvancedEnemy(newLevel.advancedEnemy));
         setObstacles([]);
-        setAdvancedObstacles([]);
         setIsLoading(false);
       } catch (err) {
         console.error("Error loading game:", err);
@@ -96,132 +39,68 @@ const Game = () => {
     };
     setIsLoading(true);
     loadGame();
-  }, [currentLevel, spritesLoaded]);
+  }, [currentLevel]);
 
-  const updateGame = useCallback(
-    (deltaTime) => {
-      if (!player || !level || !enemy || !advancedEnemy) return;
+  const updateGame = useCallback((deltaTime) => {
+    if (!player || !level || !enemy) return;
 
-      try {
-        const updatedPlayer = updatePlayer(
-          player,
-          keys,
-          LEVEL_WIDTH,
-          LEVEL_HEIGHT,
-          level.platforms,
-          level.ladders,
-          deltaTime
-        );
-        setPlayer(updatedPlayer);
+    const updatedPlayer = updatePlayer(player, keys, LEVEL_WIDTH, LEVEL_HEIGHT, level.platforms, level.ladders, deltaTime);
+    setPlayer(updatedPlayer);
 
-        const { updatedEnemy, newObstacle } = updateEnemy(enemy, gameTime);
-        setEnemy(updatedEnemy);
+    const { updatedEnemy, newObstacle } = updateEnemy(enemy, gameTime);
+    setEnemy(updatedEnemy);
 
-        if (newObstacle) {
-          setObstacles((prevObstacles) => [...prevObstacles, newObstacle]);
-        }
+    if (newObstacle) {
+      setObstacles(prevObstacles => [...prevObstacles, newObstacle]);
+    }
 
-        const {
-          updatedEnemy: updatedAdvancedEnemy,
-          newObstacle: newAdvancedObstacle,
-        } = updateAdvancedEnemy(advancedEnemy, gameTime, level.platforms);
-        setAdvancedEnemy(updatedAdvancedEnemy);
+    setObstacles(prevObstacles => updateObstacles(prevObstacles, LEVEL_HEIGHT));
 
-        if (newAdvancedObstacle) {
-          setAdvancedObstacles((prevObstacles) => [
-            ...prevObstacles,
-            newAdvancedObstacle,
-          ]);
-        }
+    // Check for player-obstacle collisions
+    const isColliding = obstacles.some(obstacle =>
+      updatedPlayer.x < obstacle.x + obstacle.width &&
+      updatedPlayer.x + updatedPlayer.width > obstacle.x &&
+      updatedPlayer.y < obstacle.y + obstacle.height &&
+      updatedPlayer.y + updatedPlayer.height > obstacle.y
+    );
 
-        setObstacles((prevObstacles) =>
-          updateObstacles(prevObstacles, LEVEL_HEIGHT)
-        );
-        setAdvancedObstacles((prevObstacles) =>
-          updateAdvancedObstacles(prevObstacles, LEVEL_WIDTH, LEVEL_HEIGHT)
-        );
-        // Check for player-obstacle collisions
-        const isColliding =
-          obstacles.some(
-            (obstacle) =>
-              player.x < obstacle.x + obstacle.width &&
-              player.x + player.width > obstacle.x &&
-              player.y < obstacle.y + obstacle.height &&
-              player.y + player.height > obstacle.y
-          ) ||
-          advancedObstacles.some(
-            (obstacle) =>
-              player.x < obstacle.x + obstacle.width &&
-              player.x + player.width > obstacle.x &&
-              player.y < obstacle.y + obstacle.height &&
-              player.y + player.height > obstacle.y
-          );
+    if (isColliding) {
+      console.log("Player hit an obstacle!");
+      // Here you can add game over logic, reset the level, etc.
+    }
 
-        if (isColliding) {
-          console.log("Player hit an obstacle!");
-          // Here you can add game over logic, reset the level, etc.
-        }
-
-        if (updatedPlayer.y < 50) {
-          if (currentLevel < 3) {
-            setCurrentLevel((prevLevel) => prevLevel + 1);
-          } else {
-            alert("Congratulations! You've completed all levels!");
-            setCurrentLevel(1);
-          }
-        }
-      } catch (err) {
-        console.error("Error updating game:", err);
-        setError("Error updating game: " + err.message);
+    if (updatedPlayer.y < 50) {
+      if (currentLevel < 3) {
+        setCurrentLevel(prevLevel => prevLevel + 1);
+      } else {
+        alert("Congratulations! You've completed all levels!");
+        setCurrentLevel(1);
       }
-    },
-    [player, level, enemy, advancedEnemy, keys, gameTime, currentLevel]
-  );
+    }
+  }, [player, level, enemy, keys, gameTime, currentLevel]);
 
-  const drawGame = useCallback(
-    (ctx) => {
-      if (!ctx || !player || !level || !enemy || !advancedEnemy) return;
+  const drawGame = useCallback((ctx) => {
+    if (!ctx || !player || !level || !enemy) return;
 
-      try {
-        clearCanvas(ctx, CANVAS_WIDTH, CANVAS_HEIGHT);
+    clearCanvas(ctx);
 
-        const { x: cameraX, y: cameraY } = getCameraOffset(
-          player.x,
-          player.y,
-          LEVEL_WIDTH,
-          LEVEL_HEIGHT,
-          CANVAS_WIDTH,
-          CANVAS_HEIGHT
-        );
+    const { x: cameraX, y: cameraY } = getCameraOffset(player.x, player.y, LEVEL_WIDTH, LEVEL_HEIGHT);
 
-        ctx.save();
-        ctx.translate(-cameraX, -cameraY);
+    ctx.save();
+    ctx.translate(-cameraX, -cameraY);
 
-        drawLevel(ctx, level);
-        drawPlayer(ctx, player);
-        drawEnemy(ctx, enemy);
-        drawAdvancedEnemy(ctx, advancedEnemy);
-        drawObstacles(ctx, obstacles);
-        drawAdvancedObstacles(ctx, advancedObstacles);
+    drawLevel(ctx, level);
+    drawPlayer(ctx, player);
+    drawEnemy(ctx, enemy);
+    drawObstacles(ctx, obstacles);
 
-        ctx.restore();
-      } catch (err) {
-        console.error("Error drawing game:", err);
-        setError("Error drawing game: " + err.message);
-      }
-    },
-    [player, level, enemy, advancedEnemy, obstacles, advancedObstacles]
-  );
+    ctx.restore();
+  }, [player, level, enemy, obstacles]);
 
   useGameLoop(canvasRef, updateGame, drawGame, setGameTime, FIXED_TIME_STEP);
 
-  if (error) {
-    return <div>Error: {error}</div>;
-  }
-
-  if (isLoading) {
-    return <div>Loading level {currentLevel}...</div>;
-  }
+  if (error) return <div>Error: {error}</div>;
+  if (isLoading) return <div>Loading level {currentLevel}...</div>;
 
   return (
     <div>
